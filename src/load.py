@@ -6,6 +6,27 @@ from torchvision import datasets
 from torchvision.utils import save_image
 
 def download_cifar10(data_dir: str):
+    # Check if all splits exist and have images
+    ready = True
+    for split in ["train", "val", "test"]:
+        split_dir = os.path.join(data_dir, split)
+        if not os.path.isdir(split_dir):
+            ready = False
+            break
+        found = False
+        for class_name in os.listdir(split_dir):
+            class_path = os.path.join(split_dir, class_name)
+            if os.path.isdir(class_path):
+                if any(f.endswith('.png') for f in os.listdir(class_path)):
+                    found = True
+                    break
+        if not found:
+            ready = False
+            break
+    if ready:
+        print(f"[INFO] Data already exists in {data_dir}, skipping download.")
+        return
+
     print(f"[INFO] Creating {data_dir} and subfolders if missing...")
     os.makedirs(data_dir, exist_ok=True)
     for split, train_flag in zip(["train", "val", "test"], [True, False, False]):
