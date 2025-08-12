@@ -1,3 +1,4 @@
+
 # TABA – Smart Agriculture Sustainability Evaluation
 
 This repository contains code and experiments for the National College of Ireland H9ETS TABA project:
@@ -11,35 +12,31 @@ This repository contains code and experiments for the National College of Irelan
 ## Folder Structure
 - `data/` – Dataset (PlantVillage subset or crop dataset).
 - `runs/` – Experiment outputs (metrics, emissions, logs).
-- `src/` – Training, evaluation, and utility scripts.
+- `src/` – Load, training, evaluation, and utility scripts.
 - `results/` – Final tables and plots for report.
 
 ## Quick Start
 ```bash
-# Create environment
-conda create -n taba python=3.10 -y
-conda activate taba
-```
 
-# Install dependencies
-```bash
+# 1) Create a Python virtual environment (recommended)
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 2) Install dependencies
 pip install -r requirements.txt
+
+# 4) Load data
+python -m src.load_data --config src/config.yaml
+
+# 4) Train baseline + sustainable models
+python -m src.train --model resnet18 --config src/config.yaml
+python -m src.train --model mobilenetv3_small_100 --config src/config.yaml
+
+# 5) Evaluate + measure latency
+python -m src.evaluate --run_dir runs/<timestamp>_resnet18
+python -m src.evaluate --run_dir runs/<timestamp>_mobilenetv3_small_100
 ```
 
-# Train baseline model
-
-```bash
-python src/train.py --model resnet18 --config src/config.yaml
-```
-
-# Train sustainable model
-
-```bash
-python src/train.py --model mobilenetv3_small_100 --config src/config.yaml
-```
-
-# Evaluate
-
-```bash
-python src/evaluate.py --model_path runs/<folder>/model.pt
-```
+## Data Options
+- **ImageFolder (recommended):** place data like `data/cifar10/train/<class>/*.jpg`, `val/`, `test/`.
+- **CIFAR-10 (fallback):** set `data.mode: cifar10` in `src/config.yaml` to run end-to-end quickly.
