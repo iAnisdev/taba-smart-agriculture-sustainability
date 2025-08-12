@@ -1,5 +1,6 @@
 
 import os
+import numpy as np
 import argparse
 import json
 import yaml
@@ -7,7 +8,13 @@ import torch
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 import timm
-from sklearn.metrics import accuracy_score, classification_report
+import time
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+try:
+    import codecarbon
+    CODECARBON_VERSION = codecarbon.__version__
+except ImportError:
+    CODECARBON_VERSION = None
 
 def evaluate_model(data_dir, model_name, config=None):
     """
@@ -33,30 +40,51 @@ def evaluate_model(data_dir, model_name, config=None):
     model.to(device)
     model.eval()
     y_true, y_pred = [], []
+    # imports moved to top
+    # Latency measurement (batch size 1)
+    latency_times = []
+    model.eval()
     with torch.no_grad():
         for x, y in test_loader:
             x, y = x.to(device), y.to(device)
+            t0 = time.time()
             logits = model(x)
-            preds = logits.argmax(1).cpu().numpy()
-            y_pred.extend(list(preds))
+            latency_times.append((time.time() - t0) * 1000.0)
+    # imports moved to top
             y_true.extend(list(y.cpu().numpy()))
     acc = accuracy_score(y_true, y_pred)
+    macro_f1 = f1_score(y_true, y_pred, average='macro')
     report = classification_report(y_true, y_pred, output_dict=True)
-    from sklearn.metrics import confusion_matrix
     cm = confusion_matrix(y_true, y_pred)
+    latency = {
+        "avg_ms": float(np.mean(latency_times)),
+        "p50_ms": float(np.percentile(latency_times, 50)),
+        "p95_ms": float(np.percentile(latency_times, 95)),
+    }
+    # Environment info
+    env = {
+        "device": str(device),
+        "pytorch_version": torch.__version__,
+        "timm_version": timm.__version__,
+        "codecarbon_version": CODECARBON_VERSION
+    }
     print(f"[EVAL] Test accuracy: {acc:.4f}")
     print("[EVAL] Classification report:")
     print(classification_report(y_true, y_pred))
     print("[EVAL] Confusion matrix:")
     print(cm)
+    print(f"[EVAL] Latency: avg={latency['avg_ms']:.2f}ms, p50={latency['p50_ms']:.2f}ms, p95={latency['p95_ms']:.2f}ms")
     # Save results to JSON
     results = {
         "model": model_name,
-        "accuracy": acc,
+        "test_acc": acc,
+        "test_macro_f1": macro_f1,
+        "latency": latency,
         "classification_report": report,
         "confusion_matrix": cm.tolist(),
         "num_classes": num_classes,
-        "test_size": len(test_ds)
+        "test_size": len(test_ds),
+        "environment": env
     }
     metrics_path = os.path.join("weights", f"{model_name}_eval.json")
     with open(metrics_path, "w") as f:
