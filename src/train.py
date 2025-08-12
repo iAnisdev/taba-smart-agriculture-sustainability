@@ -4,6 +4,7 @@ import os
 import torch
 from torchvision import datasets, transforms
 import timm
+import time
 try:
     from tqdm import tqdm
 except ImportError:
@@ -11,9 +12,19 @@ except ImportError:
 import yaml
 import json
 from sklearn.metrics import confusion_matrix
+try:
+    from codecarbon import EmissionsTracker
+except ImportError:
+    EmissionsTracker = None
 
 
 def train_model(model_name, data_dir, augment=None, config=None):
+    # EmissionsTracker is imported at top
+    tracker = None
+    if EmissionsTracker:
+        tracker = EmissionsTracker()
+        tracker.start()
+    start_time = time.time()
     # Determine epochs from config or default to 12
     epochs = 12
     if config and isinstance(config, dict) and 'epochs' in config:
@@ -58,6 +69,9 @@ def train_model(model_name, data_dir, augment=None, config=None):
     # Track metrics
     epoch_metrics = []
     model.train()
+    val_dir = os.path.join(data_dir, "val")
+    val_ds = datasets.ImageFolder(val_dir, transform=transform)
+    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=64, shuffle=False)
     for epoch in range(epochs):
         total, correct, running_loss = 0, 0, 0.0
         for x, y in tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}"):
@@ -71,12 +85,23 @@ def train_model(model_name, data_dir, augment=None, config=None):
             correct += (preds == y).sum().item()
             total += y.size(0)
             running_loss += loss.item() * y.size(0)
-        acc = correct / total
+        train_acc = correct / total
         avg_loss = running_loss / total
-        print(f"[TRAIN] Epoch {epoch+1}: train_acc={acc:.4f}, avg_loss={avg_loss:.4f}")
+        # Validation
+        v_total, v_correct = 0, 0
+        with torch.no_grad():
+            for x, y in val_loader:
+                x, y = x.to(device), y.to(device)
+                logits = model(x)
+                preds = logits.argmax(1)
+                v_correct += (preds == y).sum().item()
+                v_total += y.size(0)
+        val_acc = v_correct / v_total
+        print(f"[TRAIN] Epoch {epoch+1}: train_acc={train_acc:.4f}, val_acc={val_acc:.4f}, avg_loss={avg_loss:.4f}")
         epoch_metrics.append({
             "epoch": epoch+1,
-            "train_acc": acc,
+            "train_acc": train_acc,
+            "val_acc": val_acc,
             "train_loss": avg_loss
         })
 
@@ -96,9 +121,25 @@ def train_model(model_name, data_dir, augment=None, config=None):
             all_targets.extend(y.cpu().numpy())
     cm = confusion_matrix(all_targets, all_preds)
 
-    # Save metrics and metadata (imported at top)
+    # Training time
+    train_time_s = time.time() - start_time
+    emissions = None
+    if tracker:
+        emissions = tracker.stop()
+
+    # Model size
+    model_size_mb = os.path.getsize(weights_path) / (1024 * 1024)
+    # Parameter count
+    params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
     meta = {
         "model": model_name,
+        "params": params,
+        "model_size_mb": round(model_size_mb, 3),
+        "train_time_s": round(train_time_s, 2),
+        "val_top1": epoch_metrics[-1]["val_acc"] if epoch_metrics else None,
+        "train_top1": epoch_metrics[-1]["train_acc"] if epoch_metrics else None,
+        "emissions_gco2eq": emissions,
         "epochs": epochs,
         "metrics": epoch_metrics,
         "confusion_matrix": cm.tolist(),
