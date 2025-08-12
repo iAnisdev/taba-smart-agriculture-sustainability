@@ -1,0 +1,7 @@
+{
+  "device": "NVIDIA A100-SXM4-40GB",
+  "torch_version": "2.2.2+cu121",
+  "timm_version": "1.0.19",
+  "codecarbon_installed": true,
+  "codecarbon_version": "3.0.4"
+}
