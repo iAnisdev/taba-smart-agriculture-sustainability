@@ -5,6 +5,8 @@ import torch
 from torchvision import datasets, transforms
 import timm
 import time
+import platform
+from codecarbon import __version__ as cc_ver
 try:
     from tqdm import tqdm
 except ImportError:
@@ -123,23 +125,24 @@ def train_model(model_name, data_dir, augment=None, config=None):
 
     # Training time
     train_time_s = time.time() - start_time
-    emissions = None
-    if tracker:
-        emissions = tracker.stop()
+    emissions_kg = tracker.stop() if tracker else 0.0
+    emissions_gco2eq = round(emissions_kg * 1000, 3)
 
     # Model size
     model_size_mb = os.path.getsize(weights_path) / (1024 * 1024)
     # Parameter count
     params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    params_m = round(params / 1e6, 3)
 
     meta = {
         "model": model_name,
         "params": params,
+        "params_m": params_m,
         "model_size_mb": round(model_size_mb, 3),
         "train_time_s": round(train_time_s, 2),
         "val_top1": epoch_metrics[-1]["val_acc"] if epoch_metrics else None,
         "train_top1": epoch_metrics[-1]["train_acc"] if epoch_metrics else None,
-        "emissions_gco2eq": emissions,
+        "emissions_gco2eq": emissions_gco2eq,
         "epochs": epochs,
         "metrics": epoch_metrics,
         "confusion_matrix": cm.tolist(),
@@ -151,6 +154,21 @@ def train_model(model_name, data_dir, augment=None, config=None):
     with open(metrics_path, "w") as f:
         json.dump(meta, f, indent=2)
     print(f"[TRAIN] Saved metrics to {metrics_path}")
+
+    env = {
+        "device": str(torch.cuda.get_device_name(0)) if torch.cuda.is_available() else platform.processor(),
+        "torch_version": torch.__version__,
+        "timm_version": timm.__version__,
+        "codecarbon_installed": bool(EmissionsTracker)
+    }
+    try:
+        env["codecarbon_version"] = cc_ver
+    except Exception:
+        env["codecarbon_version"] = None
+    run_dir = weights_dir
+    with open(os.path.join(run_dir, "environment.json"), "w") as f:
+        json.dump(env, f, indent=2)
+    print(f"[TRAIN] Saved environment info to {os.path.join(run_dir, 'environment.json')}")
 
     print(f"[TRAIN] Done training {model_name}.")
     return {"status": "success", "model": model_name, "train_acc": epoch_metrics[-1]["train_acc"], "epochs": epochs, "weights": weights_path, "metrics": metrics_path}
