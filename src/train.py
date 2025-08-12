@@ -52,9 +52,25 @@ def train_model(model_name, data_dir, augment=None, config=None):
     )
     train_dir = os.path.join(data_dir, "train")
     train_ds = datasets.ImageFolder(train_dir, transform=transform)
-    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=64, shuffle=True)
-    num_classes = len(train_ds.classes)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Dynamic batch size
+    default_bs = 64
+    if config:
+        if isinstance(config, dict) and 'batch_size' in config:
+            default_bs = int(config['batch_size'])
+        elif isinstance(config, str):
+            try:
+                with open(config) as f:
+                    cfg = yaml.safe_load(f)
+                if 'batch_size' in cfg:
+                    default_bs = int(cfg['batch_size'])
+            except Exception:
+                pass
+    batch_size = 128 if torch.cuda.is_available() else 32
+    # Use config batch_size if set, else dynamic
+    batch_size = default_bs if default_bs != 64 else batch_size
+    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    num_classes = len(train_ds.classes)
     model = timm.create_model(model_name, pretrained=True, num_classes=num_classes)
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -73,7 +89,7 @@ def train_model(model_name, data_dir, augment=None, config=None):
     model.train()
     val_dir = os.path.join(data_dir, "val")
     val_ds = datasets.ImageFolder(val_dir, transform=transform)
-    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=64, shuffle=False)
+    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=batch_size, shuffle=False)
     for epoch in range(epochs):
         total, correct, running_loss = 0, 0, 0.0
         for x, y in tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}"):
