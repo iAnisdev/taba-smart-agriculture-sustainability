@@ -50,7 +50,8 @@ def evaluate_model(data_dir, model_name, config=None):
             t0 = time.time()
             logits = model(x)
             latency_times.append((time.time() - t0) * 1000.0)
-    # imports moved to top
+            preds = logits.argmax(1).cpu().numpy()
+            y_pred.extend(list(preds))
             y_true.extend(list(y.cpu().numpy()))
     acc = accuracy_score(y_true, y_pred)
     macro_f1 = f1_score(y_true, y_pred, average='macro')
