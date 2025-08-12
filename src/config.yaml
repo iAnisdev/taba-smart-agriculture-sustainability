@@ -1,7 +1,8 @@
+
 seed: 42
 img_size: 224
 batch_size: 64
-epochs: 10
+epoch: 12
 optimizer: sgd
 lr: 0.01
 momentum: 0.9
