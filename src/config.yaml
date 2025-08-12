@@ -1,0 +1,33 @@
+seed: 42
+img_size: 224
+batch_size: 64
+epochs: 10
+optimizer: sgd
+lr: 0.01
+momentum: 0.9
+weight_decay: 1e-4
+sched: cosine
+num_workers: 4
+
+augment:
+  random_resized_crop_scale: [0.7, 1.0]
+  hflip_p: 0.5
+  color_jitter: [0.2, 0.2, 0.2, 0.1]
+
+paths:
+  data_dir: data/cifar10
+  out_dir: runs
+
+models:
+  baseline: resnet18
+  sustainable: mobilenetv3_small_100
+
+data:
+  mode: cifar10
+  num_classes: 10
+
+bias_mitigation:
+  sampler: true
+
+logging:
+  print_every: 50
